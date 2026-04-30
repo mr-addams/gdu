@@ -1,64 +1,16 @@
-on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
-
+# Disabled in this fork — no code changes, Codecov token not available.
+# Tests run in upstream dundee/gdu.
 name: run tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "yes" to run (disabled by default in this fork)'
+        required: true
+
 jobs:
-  lint:
+  disabled:
     runs-on: ubuntu-latest
     steps:
-    - name: Install Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: 1.26.x
-    - name: Checkout code
-      uses: actions/checkout@v6
-    - name: Run linters
-      uses: golangci/golangci-lint-action@v9
-      with:
-        version: v2.11.2
-
-  test:
-    strategy:
-      matrix:
-        go-version: [1.25.x, 1.26.x]
-        platform: [ubuntu-latest]
-        include:
-          - go-version: 1.26.x
-            platform: macos-latest
-    runs-on: ${{ matrix.platform }}
-    steps:
-    - name: Install Go
-      if: success()
-      uses: actions/setup-go@v6
-      with:
-        go-version: ${{ matrix.go-version }}
-    - name: Checkout code
-      uses: actions/checkout@v6
-    - name: Run tests
-      run: go test -v -covermode=count ./...
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Install Go
-      if: success()
-      uses: actions/setup-go@v6
-      with:
-        go-version: 1.26.x
-    - name: Checkout code
-      uses: actions/checkout@v6
-    - name: Calc coverage
-      run: |
-        go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
-    - name: Upload coverage report
-      uses: codecov/codecov-action@v6
-      with:
-        files: ./coverage.out
-        fail_ci_if_error: true
-        verbose: true
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - run: echo "Test workflow is disabled in this fork."

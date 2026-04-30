@@ -166,6 +166,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Delete existing release if force_tag was used (re-build scenario)
+          if [[ -n "${{ github.event.inputs.force_tag }}" ]]; then
+            gh release delete "$TAG" --repo "${{ github.repository }}" --yes 2>/dev/null || true
+            git push --delete origin "$TAG" 2>/dev/null || true
+          fi
           envsubst < .github/release-notes.md > /tmp/release-notes.md
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
