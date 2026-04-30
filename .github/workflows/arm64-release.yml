@@ -109,7 +109,7 @@ jobs:
             -trimpath -mod=readonly -modcacherw \
             -ldflags="-s -w \
               -X 'github.com/dundee/gdu/v5/build.Version=$TAG' \
-              -X 'github.com/dundee/gdu/v5/build.User=github-actions' \
+              -X 'github.com/dundee/gdu/v5/build.User=github.com/mr-addams' \
               -X 'github.com/dundee/gdu/v5/build.Time=$BUILD_TIME'" \
             -o dist/gdu_linux_${{ matrix.goarch }} \
             github.com/dundee/gdu/v5/cmd/gdu
