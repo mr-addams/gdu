@@ -129,6 +129,12 @@ jobs:
           GOARCH=${{ matrix.goarch }} VERSION=$TAG envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager rpm --target dist/
           GOARCH=${{ matrix.goarch }} VERSION=$TAG envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager apk --target dist/
 
+      - name: Pack binary into .tgz
+        run: |
+          cd dist
+          tar czf gdu_linux_${{ matrix.goarch }}.tgz gdu_linux_${{ matrix.goarch }}
+          rm gdu_linux_${{ matrix.goarch }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
