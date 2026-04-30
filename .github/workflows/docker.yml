@@ -1,42 +1,16 @@
+# Disabled in this fork — upstream Docker images are published by dundee/gdu.
+# This fork only provides arm64 binary packages via arm64-release.yml.
 name: Docker
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'master'
-    tags:
-      - 'v*'
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+    inputs:
+      confirm:
+        description: 'Type "yes" to run (disabled by default in this fork)'
+        required: true
 
 jobs:
-  docker:
+  disabled:
     runs-on: ubuntu-latest
     steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v6
-      -
-        name: Login to registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      -
-        name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-      -
-        name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - run: echo "Docker workflow is disabled in this fork."

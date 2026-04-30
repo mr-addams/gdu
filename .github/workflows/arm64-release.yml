@@ -74,15 +74,20 @@ jobs:
           ref: ${{ env.TAG }}
           fetch-depth: 0
 
-      - name: Fetch nfpm.yaml from fork
+      - name: Fetch packaging files from fork
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
           path: _fork
-          sparse-checkout: nfpm.yaml
+          sparse-checkout: |
+            nfpm.yaml
+            .github/release-notes-arm64.md
 
-      - name: Copy nfpm.yaml into working directory
-        run: cp _fork/nfpm.yaml . && rm -rf _fork
+      - name: Copy packaging files into working directory
+        run: |
+          cp _fork/nfpm.yaml .
+          cp _fork/.github/release-notes-arm64.md .github/
+          rm -rf _fork
 
       - name: Setup Go
         uses: actions/setup-go@v5
