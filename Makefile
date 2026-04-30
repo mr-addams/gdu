@@ -2,7 +2,8 @@ NAME := gdu
 MAJOR_VER := v5
 PACKAGE := github.com/dundee/$(NAME)/$(MAJOR_VER)
 CMD_GDU := cmd/gdu
-VERSION := $(shell git describe --tags 2>/dev/null)
+VERSION := $(shell git describe --tags 2>/dev/null || grep '^Version:' gdu.spec | awk '{print "v"$$2}')
+NFPM := $(shell which nfpm 2>/dev/null || echo ~/go/bin/nfpm)
 NAMEVER := $(NAME)-$(subst v,,$(VERSION))
 DATE := $(shell date +'%Y-%m-%d')
 GOBIN := go
@@ -192,4 +193,31 @@ install-dev-dependencies:
 	$(GOBIN) install honnef.co/go/gotraceui/cmd/gotraceui@latest
 	$(GOBIN) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.2
 
-.PHONY: run build build-static build-all test gobench benchmark coverage coverage-html clean clean-uncompressed-dist man show-man release dev-build
+build-arm64:
+	@echo "Version: " $(VERSION)
+	mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_arm64 $(PACKAGE)/$(CMD_GDU)
+
+package-deb-arm64: build-arm64 man
+	mkdir -p dist
+	VERSION=$(VERSION) GOARCH=arm64 envsubst < nfpm.yaml | $(NFPM) package --config /dev/stdin --packager deb --target dist/
+
+package-rpm-arm64: build-arm64 man
+	mkdir -p dist
+	VERSION=$(VERSION) GOARCH=arm64 envsubst < nfpm.yaml | $(NFPM) package --config /dev/stdin --packager rpm --target dist/
+
+package-apk-arm64: build-arm64 man
+	mkdir -p dist
+	VERSION=$(VERSION) GOARCH=arm64 envsubst < nfpm.yaml | $(NFPM) package --config /dev/stdin --packager apk --target dist/
+
+package-all-arm64: package-deb-arm64 package-rpm-arm64 package-apk-arm64
+
+release-arm64: package-all-arm64
+	gh release create -t "gdu $(VERSION) arm64" $(VERSION)-arm64 \
+		dist/gdu_linux_arm64 \
+		dist/*.deb \
+		dist/*.rpm \
+		dist/*.apk \
+		--notes "arm64/aarch64 packages built from $(VERSION)"
+
+.PHONY: run build build-static build-all build-arm64 package-deb-arm64 package-rpm-arm64 package-apk-arm64 package-all-arm64 release-arm64 test gobench benchmark coverage coverage-html clean clean-uncompressed-dist man show-man release dev-build

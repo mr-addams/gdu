@@ -1,0 +1,28 @@
+name: gdu
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: utils
+priority: optional
+maintainer: Daniel Milde <daniel@milde.cz>
+description: Pretty fast disk usage analyzer written in Go.
+vendor: Daniel Milde
+homepage: https://github.com/dundee/gdu
+license: MIT
+
+contents:
+  - src: dist/gdu_linux_${GOARCH}
+    dst: /usr/bin/gdu
+    file_info:
+      mode: 0755
+
+  - src: gdu.1
+    dst: /usr/share/man/man1/gdu.1
+    file_info:
+      mode: 0644
+
+overrides:
+  deb:
+    depends:
+      - libc6

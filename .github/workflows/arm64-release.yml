@@ -1,0 +1,184 @@
+name: ARM64 Release
+
+# Tracks upstream dundee/gdu and publishes arm64 packages on every new release.
+# Runs daily at 06:00 UTC or manually via workflow_dispatch.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_tag:
+        description: 'Force rebuild for a specific tag (e.g. v5.34.0). Leave empty for auto-detection.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Check upstream
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      skip: ${{ steps.resolve.outputs.skip }}
+    steps:
+      - name: Resolve target tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORCE="${{ github.event.inputs.force_tag }}"
+
+          if [[ -n "$FORCE" ]]; then
+            TAG="$FORCE"
+            echo "Принудительный тег: $TAG"
+          else
+            TAG=$(curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              https://api.github.com/repos/dundee/gdu/releases/latest \
+              | jq -r '.tag_name')
+            echo "Последний апстрим-тег: $TAG"
+          fi
+
+          # Проверяем, есть ли уже такой релиз на форке
+          STATUS=$(curl -fsSL -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG")
+
+          if [[ "$STATUS" == "200" && -z "$FORCE" ]]; then
+            echo "Релиз $TAG уже опубликован, пропускаем."
+            echo "skip=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  build-and-release:
+    name: Build & Release arm64
+    needs: check
+    if: needs.check.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+      VERSION: ${{ needs.check.outputs.tag }}
+      GOARCH: arm64
+
+    steps:
+      - name: Checkout upstream tag
+        uses: actions/checkout@v4
+        with:
+          repository: dundee/gdu
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      # Копируем наши файлы пакетирования поверх апстрима
+      - name: Fetch nfpm.yaml from fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: _fork
+          sparse-checkout: nfpm.yaml
+
+      - name: Copy nfpm.yaml into working directory
+        run: cp _fork/nfpm.yaml . && rm -rf _fork
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install nfpm
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+      - name: Build arm64 binary
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+            -trimpath -mod=readonly -modcacherw \
+            -ldflags="-s -w \
+              -X 'github.com/dundee/gdu/v5/build.Version=${TAG}' \
+              -X 'github.com/dundee/gdu/v5/build.User=github-actions' \
+              -X 'github.com/dundee/gdu/v5/build.Time=$(LC_ALL=en_US.UTF-8 date)'" \
+            -o dist/gdu_linux_arm64 \
+            github.com/dundee/gdu/v5/cmd/gdu
+
+      - name: Build man page
+        run: |
+          sudo apt-get install -y pandoc
+          DATE=$(date +'%Y-%m-%d')
+          sed "s/{{date}}/$DATE/g" gdu.1.md > gdu.1.date.md
+          pandoc gdu.1.date.md -s -t man > gdu.1
+          rm gdu.1.date.md
+
+      - name: Package .deb
+        run: |
+          VERSION=${TAG} GOARCH=arm64 envsubst < nfpm.yaml \
+            | nfpm package --config /dev/stdin --packager deb --target dist/
+
+      - name: Package .rpm
+        run: |
+          VERSION=${TAG} GOARCH=arm64 envsubst < nfpm.yaml \
+            | nfpm package --config /dev/stdin --packager rpm --target dist/
+
+      - name: Package .apk
+        run: |
+          VERSION=${TAG} GOARCH=arm64 envsubst < nfpm.yaml \
+            | nfpm package --config /dev/stdin --packager apk --target dist/
+
+      - name: SHA256 checksums
+        run: |
+          cd dist
+          sha256sum gdu_linux_arm64 *.deb *.rpm *.apk > sha256sums-arm64.txt
+          cat sha256sums-arm64.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES=$(cat <<EOF
+          ## gdu ${TAG} — Linux arm64 / aarch64
+
+          Unofficial arm64 packages for [gdu ${TAG}](https://github.com/dundee/gdu/releases/tag/${TAG}).
+          Source code is unmodified — cross-compiled from the upstream tag.
+
+          ### Installation
+
+          **Debian / Ubuntu / Raspberry Pi OS:**
+          \`\`\`bash
+          dpkg -i gdu_*_arm64.deb
+          \`\`\`
+
+          **Alpine Linux:**
+          \`\`\`bash
+          apk add --allow-untrusted gdu_*_aarch64.apk
+          \`\`\`
+
+          **RPM (Fedora / RHEL / openSUSE):**
+          \`\`\`bash
+          rpm -i gdu-*aarch64.rpm
+          \`\`\`
+
+          **Raw binary:**
+          \`\`\`bash
+          install -m755 gdu_linux_arm64 /usr/local/bin/gdu
+          \`\`\`
+
+          ---
+
+          Неофициальные arm64-пакеты. Код не изменён — кросс-компиляция из апстрим-тега.
+          EOF
+          )
+
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --title "gdu ${TAG} (arm64)" \
+            --notes "$NOTES" \
+            dist/gdu_linux_arm64 \
+            dist/*.deb \
+            dist/*.rpm \
+            dist/*.apk \
+            dist/sha256sums-arm64.txt

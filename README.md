@@ -1,3 +1,17 @@
+# go DiskUsage() — arm64 builds
+
+> **Unofficial fork** · No code changes. The sole purpose of this fork is to publish ready-to-install `arm64`/`aarch64` packages (`.deb`, `.rpm`, `.apk`) for every [dundee/gdu](https://github.com/dundee/gdu) release, since the upstream author does not provide them officially.
+>
+> The [`arm64-release.yml`](.github/workflows/arm64-release.yml) workflow checks upstream daily and automatically publishes packages to the [Releases](../../releases) page of this fork whenever a new tag appears.
+>
+> **Upstream project:** https://github.com/dundee/gdu
+
+---
+
+> **Неофициальный форк** · Код не изменён. Цель — публиковать готовые `arm64`/`aarch64`-пакеты (`.deb`, `.rpm`, `.apk`) для каждого релиза оригинального проекта, которые автор официально не предоставляет. Workflow ежедневно отслеживает апстрим и автоматически создаёт релизы на этом форке.
+
+---
+
 # go DiskUsage()
 
 <img src="./gdu.png" alt="Gdu " width="200" align="right">
