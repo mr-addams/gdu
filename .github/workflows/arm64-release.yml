@@ -1,6 +1,6 @@
-name: ARM64 Release
+name: Linux Release
 
-# Tracks upstream dundee/gdu and publishes arm64 packages on every new release.
+# Tracks upstream dundee/gdu and publishes amd64 + arm64 packages on every new release.
 # Runs daily at 06:00 UTC or manually via workflow_dispatch.
 
 on:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       force_tag:
-        description: 'Force rebuild for a specific tag (e.g. v5.34.0). Leave empty for auto-detection.'
+        description: 'Force rebuild for a specific tag (e.g. v5.36.1). Leave empty for auto-detection.'
         required: false
         default: ''
 
@@ -42,7 +42,7 @@ jobs:
             echo "Latest upstream tag: $TAG"
           fi
 
-          # -o /dev/null to discard body, no -f so 404 doesn't abort the script
+          # No -f: 404 means release doesn't exist yet, which is fine
           STATUS=$(curl -sSL -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG")
@@ -58,13 +58,16 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  build-and-release:
-    name: Build & Release arm64
+  build:
+    name: Build ${{ matrix.goarch }}
     needs: check
     if: needs.check.outputs.skip == 'false'
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.check.outputs.tag }}
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
 
     steps:
       - name: Checkout upstream tag
@@ -81,12 +84,12 @@ jobs:
           path: _fork
           sparse-checkout: |
             nfpm.yaml
-            .github/release-notes-arm64.md
+            .github/release-notes.md
 
       - name: Copy packaging files into working directory
         run: |
           cp _fork/nfpm.yaml .
-          cp _fork/.github/release-notes-arm64.md .github/
+          cp _fork/.github/release-notes.md .github/
           rm -rf _fork
 
       - name: Setup Go
@@ -98,17 +101,17 @@ jobs:
       - name: Install nfpm
         run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
 
-      - name: Build arm64 binary
+      - name: Build binary
         run: |
           mkdir -p dist
           BUILD_TIME=$(LC_ALL=en_US.UTF-8 date)
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build \
             -trimpath -mod=readonly -modcacherw \
             -ldflags="-s -w \
               -X 'github.com/dundee/gdu/v5/build.Version=$TAG' \
               -X 'github.com/dundee/gdu/v5/build.User=github-actions' \
               -X 'github.com/dundee/gdu/v5/build.Time=$BUILD_TIME'" \
-            -o dist/gdu_linux_arm64 \
+            -o dist/gdu_linux_${{ matrix.goarch }} \
             github.com/dundee/gdu/v5/cmd/gdu
 
       - name: Build man page
@@ -122,27 +125,50 @@ jobs:
       - name: Package .deb / .rpm / .apk
         run: |
           NFPM="$(go env GOPATH)/bin/nfpm"
-          VERSION=$TAG GOARCH=arm64 envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager deb --target dist/
-          VERSION=$TAG GOARCH=arm64 envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager rpm --target dist/
-          VERSION=$TAG GOARCH=arm64 envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager apk --target dist/
+          GOARCH=${{ matrix.goarch }} VERSION=$TAG envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager deb --target dist/
+          GOARCH=${{ matrix.goarch }} VERSION=$TAG envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager rpm --target dist/
+          GOARCH=${{ matrix.goarch }} VERSION=$TAG envsubst < nfpm.yaml | "$NFPM" package --config /dev/stdin --packager apk --target dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.goarch }}
+          path: dist/
+          retention-days: 1
+
+  release:
+    name: Publish release
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+
+    steps:
+      - name: Fetch release notes from fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          sparse-checkout: .github/release-notes.md
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
 
       - name: SHA256 checksums
         run: |
           cd dist
-          sha256sum gdu_linux_arm64 *.deb *.rpm *.apk > sha256sums-arm64.txt
-          cat sha256sums-arm64.txt
+          sha256sum * > sha256sums.txt
+          cat sha256sums.txt
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          envsubst < .github/release-notes-arm64.md > /tmp/release-notes.md
+          envsubst < .github/release-notes.md > /tmp/release-notes.md
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "gdu $TAG (arm64)" \
+            --title "gdu $TAG (linux amd64 + arm64)" \
             --notes-file /tmp/release-notes.md \
-            dist/gdu_linux_arm64 \
-            dist/*.deb \
-            dist/*.rpm \
-            dist/*.apk \
-            dist/sha256sums-arm64.txt
+            dist/*
